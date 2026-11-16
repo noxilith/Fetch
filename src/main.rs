@@ -5,6 +5,7 @@ mod config;
 mod gather;
 mod info;
 mod logo;
+mod logos;
 mod render;
 mod shading;
 mod term;
@@ -212,7 +213,7 @@ fn parse_args(args: &[String]) -> Parsed {
 /// Returns the distro name used for the color scheme.
 fn load_logo(logo: &mut Logo, logo_name: Option<&str>) -> String {
     if let Some(name) = logo_name {
-        if !logo.load_fastfetch(name) {
+        if !logo.load_builtin(name) && !logo.load_fastfetch(name) {
             logo.load_default();
         }
         return truncate_bytes(name, 63).to_string();
@@ -229,8 +230,9 @@ fn load_logo(logo: &mut Logo, logo_name: Option<&str>) -> String {
         id_like = d.id_like;
     }
 
-    // Only try fastfetch if no custom logo.txt was loaded
-    let mut got_logo = has_custom;
+    // A custom logo.txt wins, then a logo built into fetch for this distro,
+    // and fastfetch only when neither applies
+    let mut got_logo = has_custom || (!distro.is_empty() && logo.load_builtin(&distro));
     if !got_logo && !distro.is_empty() {
         got_logo = logo.load_fastfetch(&distro);
         if !got_logo {

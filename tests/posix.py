@@ -100,6 +100,21 @@ class FetchTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertTrue(result.stderr)
 
+    def test_builtin_singularity_logo(self):
+        with tempfile.TemporaryDirectory(prefix="fetch-test-") as directory:
+            home = Path(directory)
+            # no fastfetch on PATH: the logo has to come from the binary itself
+            env = {"PATH": str(home)}
+            args = ["--no-info", "--frames", "1", "--no-color", "--speed", "0"]
+            ring = self.run_fetch(["--logo", "singularity"] + args, home, env)
+            alias = self.run_fetch(["--logo", "SingularitySYS"] + args, home, env)
+            other = self.run_fetch(["--logo", "no-such-distro"] + args, home, env)
+            for result in (ring, alias, other):
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.stderr, b"")
+            self.assertEqual(ring.stdout, alias.stdout)
+            self.assertNotEqual(ring.stdout, other.stdout)  # other falls back to gentoo
+
     def test_invalid_arguments(self):
         for args in [
             ["--frames", "-1"], ["--frames", "junk"], ["--frames", "2147483648"],

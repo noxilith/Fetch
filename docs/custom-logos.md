@@ -4,9 +4,21 @@
 
 Create `~/.config/fetch/logo.txt` with your ASCII/Unicode art. fetch will use it instead of detecting your distro.
 
+## Built-in logos
+
+fetch ships a few logos inside the binary, so they work without fastfetch:
+
+- **SingularitySYS**: used automatically when `/etc/os-release` has `ID=singularity`
+  (or when fastfetch reports that ID), and with `fetch -l singularity`. It uses
+  the violet/lavender color scheme of the SingularitySYS logo.
+- **Gentoo**: the fallback when no other logo can be found.
+
+Priority: `--logo <name>`, then `~/.config/fetch/logo.txt`, then a built-in logo
+for the detected distro, then fastfetch, then Gentoo.
+
 ## Distro color scheme
 
-Add `# distro: <name>` as the first line to use that distro's color scheme:
+Add `# distro: <name>` as the first line to use that distro's color scheme (for example `gentoo`, `arch`, `nixos` or `singularity`):
 
 ```
 # distro: gentoo

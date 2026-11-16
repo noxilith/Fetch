@@ -285,6 +285,15 @@ impl Logo {
         !self.raw.is_empty()
     }
 
+    /// Load the logo built into the binary for this distro, if there is one.
+    pub fn load_builtin(&mut self, distro: &str) -> bool {
+        let Some(art) = crate::logos::builtin(distro) else {
+            return false;
+        };
+        self.raw = art.iter().map(|s| s.to_string()).collect();
+        true
+    }
+
     /// The built-in Gentoo logo.
     pub fn load_default(&mut self) {
         const GENTOO: [&str; 18] = [
@@ -487,6 +496,8 @@ pub fn distro_colors(distro: &str) -> Option<(&'static str, &'static str)> {
         "alpine" => ("\x1b[1;34m", "\x1b[1;37m"),
         "opensuse-tumbleweed" | "opensuse-leap" | "opensuse" => ("\x1b[1;32m", "\x1b[1;37m"),
         "macos" => ("\x1b[1;36m", "\x1b[1;37m"),
+        // violet #7c6cff outside, lavender #c9c1ff on the faces
+        "singularity" | "singularitysys" => ("\x1b[1;38;5;99m", "\x1b[1;38;5;189m"),
         _ => return None,
     })
 }

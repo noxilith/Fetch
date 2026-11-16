@@ -65,7 +65,14 @@ Or drop a custom logo in `~/.config/fetch/logo.txt`:
 ...
 ```
 
-Without fastfetch, the built-in Gentoo logo is used.
+Some logos are built into the binary and need no fastfetch:
+
+| Logo | Used when |
+|------|-----------|
+| SingularitySYS (a ringed black hole) | the distro ID is `singularity`, or `-l singularity` |
+| Gentoo | fallback when nothing else matches |
+
+A `~/.config/fetch/logo.txt` always wins over a built-in logo.
 
 ## System info
 
