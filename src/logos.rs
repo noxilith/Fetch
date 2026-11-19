@@ -30,6 +30,19 @@ pub fn builtin(distro: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// The built-in art flattened to the classic `@%#` look for static (`--minimal`)
+/// output: the density characters only exist to give the 3D render its relief.
+pub fn flatten(row: &str) -> String {
+    row.chars()
+        .map(|c| match crate::logo::char_weight(c) {
+            _ if c == ' ' => ' ',
+            w if w >= 0.60 => '@',
+            w if w >= 0.30 => '%',
+            _ => '#',
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -42,6 +55,17 @@ mod tests {
         }
         assert!(builtin("arch").is_none());
         assert!(builtin("").is_none());
+    }
+
+    #[test]
+    fn flatten_keeps_the_shape() {
+        assert_eq!(flatten(" .oM"), " #%@");
+        let art = builtin("singularity").unwrap();
+        for row in art {
+            let flat = flatten(row);
+            assert_eq!(flat.chars().count(), row.chars().count());
+            assert!(flat.chars().all(|c| " @%#".contains(c)));
+        }
     }
 
     #[test]

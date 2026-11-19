@@ -50,6 +50,7 @@ Don't use AI to generate issues, discussion posts, or governance proposals. Ther
 - `src/render.rs`: point cloud, layout, rasterizing, frame composition
 - `src/shading.rs`: shading ramps and sub-cell glyphs
 - `src/info.rs`: the info block (lines, live refresh, box)
+- `src/minimal.rs`: `--minimal`, the one-shot static print
 - `src/term.rs`: raw mode, signals, mouse/keyboard input
 - `src/gather/`: the system-info gatherers
 

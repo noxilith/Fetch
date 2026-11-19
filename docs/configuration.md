@@ -93,6 +93,12 @@ shading=.,-~:;=!*#$@
 Custom shading ramp for the 3D rendering. Characters go from dimmest to brightest. Supports UTF-8. This implies ASCII shading mode.
 
 ```
+minimal=yes
+```
+
+Always print the logo and info once and exit, like `--minimal` (no animation). Default is `no`.
+
+```
 shading_mode=ascii
 ```
 

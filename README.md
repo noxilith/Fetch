@@ -40,6 +40,28 @@ sudo make install
 The packaging files (`debian/`, `fetch.spec`, `nix/`, `flake.nix`) build this Rust port with Cargo,
 but they have not been test-built yet. The distro packages published for the C project still ship the C version. Otherwise build from source as above.
 
+## Minimal mode
+
+```
+fetch --minimal
+```
+
+Prints the logo next to the system info once and exits, like fastfetch: no
+animation, no 3D point cloud, no terminal raw mode or signal handlers. Put
+`minimal=yes` in the config to make it the default. It uses the logo's own
+characters (the built-in SingularitySYS logo is printed in its flat `@%#` form),
+your config fields, `label_color`, `logo_outer`, `box` and `show_title`.
+
+For the smallest memory footprint, build the statically linked binary:
+
+```
+make static          # or: sudo make install-static
+```
+
+That halves the resident memory (about 1.5 MB for `--minimal`, versus about
+3 MB for a normal build) at the cost of a larger file (about 1.7 MB). It needs
+the static glibc libraries (`glibc-static` on Fedora, `libc6-dev` on Debian).
+
 ## Logos
 
 Custom logos: [docs/custom-logos.md](docs/custom-logos.md)
@@ -178,6 +200,7 @@ colors
 | `--depth <float>` | Scale the 3D depth (default 1.0) |
 | `--height <n>` | Override render height in rows |
 | `--box` | Draw a border box around the info block |
+| `--minimal` | Print the logo and info once, statically (like fastfetch), then exit. Lowest memory use |
 | `--no-info` | Just the logo, no system info |
 | `--no-color` | Disable coloring |
 | `--frames <n>` | Stop after n frames |

@@ -139,6 +139,7 @@ pub struct Config {
     pub speed: Option<f32>,
     pub spin: Option<(bool, bool)>,
     pub boxed: bool,
+    pub minimal: bool,
     pub show_title: bool,
     pub shading: String,
     pub shading_mode: String,
@@ -175,6 +176,7 @@ impl Default for Config {
             speed: None,
             spin: None,
             boxed: false,
+            minimal: false,
             show_title: true,
             shading: String::new(),
             shading_mode: String::new(),
@@ -274,6 +276,8 @@ impl Config {
             self.show_title = truthy(strip_inline_hint(v));
         } else if let Some(v) = line.strip_prefix("box=") {
             self.boxed = truthy(strip_inline_hint(v));
+        } else if let Some(v) = line.strip_prefix("minimal=") {
+            self.minimal = truthy(strip_inline_hint(v));
         } else if let Some(v) = line.strip_prefix("shading=") {
             // freeform: no hint stripping
             self.shading = truncate_bytes(v, 127).into();

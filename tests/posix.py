@@ -100,6 +100,36 @@ class FetchTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertTrue(result.stderr)
 
+    def test_minimal_prints_once_without_animation(self):
+        with tempfile.TemporaryDirectory(prefix="fetch-test-") as directory:
+            home = Path(directory)
+            config_dir = home / ".config" / "fetch"
+            config_dir.mkdir(parents=True)
+            (config_dir / "logo.txt").write_text("  XX  \nXXXXXX\n  XX  \n")
+            (config_dir / "config").write_text("custom_Test=visible\n")
+            result = self.run_fetch(["--minimal"], home)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, b"")
+            plain = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", result.stdout)
+            self.assertIn(b"Test: visible", plain)
+            self.assertEqual(plain.count(b"XXXXXX"), 1)  # printed once, not animated
+            for control in [b"\x1b[H", b"\x1b[2J", b"\x1b[?25l", b"\x1b[?1002h"]:
+                self.assertNotIn(control, result.stdout)
+            # the config key works the same as the flag
+            (config_dir / "config").write_text("minimal=yes\ncustom_Test=visible\n")
+            self.assertEqual(self.run_fetch([], home).stdout, result.stdout)
+
+    def test_minimal_builtin_logo_is_flat_ascii(self):
+        with tempfile.TemporaryDirectory(prefix="fetch-test-") as directory:
+            home = Path(directory)
+            result = self.run_fetch(
+                ["--minimal", "--no-info", "--no-color", "--logo", "singularity"],
+                home, {"PATH": str(home)},
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue(result.stdout.strip())
+            self.assertTrue(set(result.stdout.decode()) <= set(" @%#\n"))
+
     def test_builtin_singularity_logo(self):
         with tempfile.TemporaryDirectory(prefix="fetch-test-") as directory:
             home = Path(directory)

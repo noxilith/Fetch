@@ -24,6 +24,8 @@ pub struct Logo {
     pub cells: Vec<Vec<Cell>>,
     pub cols: usize,
     pub has_ansi: bool,
+    /// Loaded from the art built into the binary.
+    pub builtin: bool,
 }
 
 fn is_fg_color(n: i32) -> bool {
@@ -291,6 +293,7 @@ impl Logo {
             return false;
         };
         self.raw = art.iter().map(|s| s.to_string()).collect();
+        self.builtin = true;
         true
     }
 

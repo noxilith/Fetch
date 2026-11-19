@@ -6,6 +6,7 @@ mod gather;
 mod info;
 mod logo;
 mod logos;
+mod minimal;
 mod render;
 mod shading;
 mod term;
@@ -48,6 +49,8 @@ Options:
                             sub-cell blocks: sextants (2x3) or blocks (2x2)
   --shading-chars <str>     Custom shading ramp, supports UTF-8
   --box                     Draw a border box around the info block
+  --minimal                 Print the logo and info once, statically (like
+                            fastfetch), then exit: no animation, least memory
   --cursor <row>,<col>      Leave the cursor visible at this screen position
                             after every frame (for a prompt drawn under the art)
   -V, --version             Show version
@@ -101,6 +104,7 @@ struct Cli {
     shading: Option<String>,
     shading_mode: Option<String>,
     boxed: bool,
+    minimal: bool,
     height: Option<i64>,
     size: Option<f32>,
     depth: Option<f32>,
@@ -123,6 +127,7 @@ fn parse_args(args: &[String]) -> Parsed {
         shading: None,
         shading_mode: None,
         boxed: false,
+        minimal: false,
         height: None,
         size: None,
         depth: None,
@@ -182,6 +187,7 @@ fn parse_args(args: &[String]) -> Parsed {
             "--size" => cli.size = Some(number!(0.5, 5.0)),
             "--depth" => cli.depth = Some(number!(0.1, 10.0)),
             "--box" => cli.boxed = true,
+            "--minimal" => cli.minimal = true,
             "--cursor" => {
                 let text = value!();
                 let parsed = text.split_once(',').and_then(|(r, c)| {
@@ -257,6 +263,58 @@ fn load_logo(logo: &mut Logo, logo_name: Option<&str>) -> String {
     distro
 }
 
+/// Logo colors (outer, inner): bold magenta + white by default, then the
+/// distro's scheme, then the config's `logo_outer` / `logo_inner`.
+fn logo_colors(distro: &str, cfg: &Config) -> (String, String) {
+    let (mut outer, mut inner) = ("\x1b[1;35m".to_string(), "\x1b[1;37m".to_string());
+    if let Some((o, i)) = distro_colors(distro) {
+        outer = o.into();
+        inner = i.into();
+    }
+    if !cfg.logo_outer.is_empty() {
+        outer = cfg.logo_outer.clone();
+    }
+    if !cfg.logo_inner.is_empty() {
+        inner = cfg.logo_inner.clone();
+    }
+    (outer, inner)
+}
+
+/// `--minimal`: one static print of the logo beside the info. Skips everything
+/// the animation needs (point cloud, render buffers, terminal modes, signals).
+fn run_minimal(cli: &Cli, cfg: &Config, term_cols: i32) -> ExitCode {
+    let mut logo = Logo::default();
+    let distro = load_logo(&mut logo, cli.logo_name.as_deref());
+    let (color, _) = logo_colors(&distro, cfg);
+
+    let has_ansi = logo.raw.iter().any(|r| r.as_bytes().contains(&util::ESC));
+    let rows: Vec<String> = if logo.builtin && !has_ansi {
+        logo.raw.iter().map(|r| logos::flatten(r)).collect()
+    } else {
+        std::mem::take(&mut logo.raw)
+    };
+
+    let mut info = if cli.show_info {
+        gather_info(cfg)
+    } else {
+        Info::new(&cfg.label_color, cfg.show_title)
+    };
+    if cli.boxed || cfg.boxed {
+        info.box_wrap_lines();
+    }
+
+    let opts = minimal::Opts {
+        use_color: cli.use_color,
+        color: &color,
+        term_cols,
+    };
+    let out = minimal::render(&rows, &info.lines, has_ansi, &opts);
+    let mut stdout = std::io::stdout().lock();
+    let _ = stdout.write_all(&out);
+    let _ = stdout.flush();
+    ExitCode::SUCCESS
+}
+
 /// Gather all configured info lines.
 fn gather_info(cfg: &Config) -> Info {
     let mut info = Info::new(&cfg.label_color, cfg.show_title);
@@ -317,6 +375,10 @@ fn main() -> ExitCode {
     }
     let (mut term_rows, mut term_cols) = term::size();
 
+    if cli.minimal || cfg.minimal {
+        return run_minimal(&cli, &cfg, term_cols);
+    }
+
     // Shading: CLI flags, then config, then the ascii default
     let shading_chars = cli
         .shading
@@ -344,19 +406,7 @@ fn main() -> ExitCode {
     let distro = load_logo(&mut logo, cli.logo_name.as_deref());
     logo.process();
 
-    // Default colors: bold magenta (outer) + bold white (inner)
-    let mut color_outer = "\x1b[1;35m".to_string();
-    let mut color_inner = "\x1b[1;37m".to_string();
-    if let Some((o, i)) = distro_colors(&distro) {
-        color_outer = o.into();
-        color_inner = i.into();
-    }
-    if !cfg.logo_outer.is_empty() {
-        color_outer = cfg.logo_outer.clone();
-    }
-    if !cfg.logo_inner.is_empty() {
-        color_inner = cfg.logo_inner.clone();
-    }
+    let (color_outer, color_inner) = logo_colors(&distro, &cfg);
 
     let mut info = if show_info {
         gather_info(&cfg)
