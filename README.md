@@ -1,44 +1,75 @@
 # fetch
 
-A donut.c-inspired fetch tool that spins your distro logo in 3D with live-updating system info.
+**A Rust port of [areofyl/fetch](https://github.com/areofyl/fetch)**, the
+donut.c-style system-info tool that spins your distro logo in 3D, with a few
+changes of its own.
 
 ![demo](demo.gif)
 
-Takes any ASCII/Unicode distro logo, turns each character into a point cloud
-based on its visual density, and renders it as a rotating 3D relief with
-Blinn-Phong shading. System info is gathered natively with no external
-dependencies. Works on Linux and macOS.
+<sub>The recording is from the original project; this port renders the same frames.</sub>
 
-Based on [gentoo.c](https://github.com/areofyl/gentoo.c). This is a Rust port
-of [areofyl/fetch](https://github.com/areofyl/fetch): same flags, config
-format and output, rendered frame for frame the same as the C original.
+fetch turns every character of an ASCII/Unicode logo into a column of points
+whose height follows the character's visual density, then draws the result as a
+rotating relief with Blinn-Phong shading, next to live system info. It reads
+everything natively (no fastfetch or neofetch needed) and the only crate it
+depends on is `libc`.
 
-## Build & run
+## What's different from upstream
+
+This is a port, not a fork of the C source: the program was rewritten in Rust
+module by module. On Linux the output is the same as upstream's v2.3.0, which I
+checked by running both binaries side by side and diffing the frames byte for
+byte, across options, config files, logos and terminal sizes. What changed:
+
+| | |
+|---|---|
+| **Language** | Rust instead of one C file. Safe code throughout apart from a few clearly marked `libc` calls (terminal, DRM, `getifaddrs`). |
+| **`--minimal`** | Prints the logo and info once and exits, like fastfetch: no animation, nothing left running. Also available as `minimal=yes` in the config. |
+| **Static build** | `make static` links glibc in and roughly halves resident memory (about 1.5 MB in `--minimal`). |
+| **Built-in SingularitySYS logo** | Used automatically when `/etc/os-release` says `ID=singularity` (or with `-l singularity`), with no fastfetch required. |
+| **Ends on the logo** | When you press a key, the logo snaps to the face-on view instead of freezing at a random angle, and a blank row is left under it for your prompt. |
+| **Pastes aren't lost** | Text pasted while it spins used to be eaten by the keypress that stops it. It is handed back to your shell now (Linux, see [limits](#status-and-limits)). |
+| **`--cursor <row>,<col>`** | Parks the cursor at a fixed spot between frames, for wrappers that draw a prompt under the animation. |
+| **No shell for helpers** | `lspci`, `rpm`, `nix-store`, `flatpak` and `<program> --version` run with plain argument lists, never through `sh -c`. |
+| **Small fixes** | The logo keeps its `--size` after a terminal resize; custom fields no longer steal another field's live-refresh line; `--help` lost a stray line; long colored logo rows from fastfetch are no longer split in two; the frame is one blank row shorter when the info block sets its height. |
+
+## Build and run
 
 ```
 cargo build --release
 ./target/release/fetch
 ```
 
-`make` does the same. Needs a Rust toolchain (stable, 1.82 or newer).
+`make` does the same, and needs a stable Rust toolchain (1.82 or newer).
 
-Press any key to stop. The keypress passes through to the shell, so it
-works as a startup fetch. Ctrl-C works too (but is less cool). Click and
-drag the logo to rotate it by hand, release to fling it spinning.
+Press any key to stop. The key still reaches your shell, so it works as a
+startup fetch. Click and drag the logo to spin it by hand; release to fling it.
 
-## Install
+### Install
 
 ```
-sudo make install
+sudo make install                    # /usr/local/bin
+PREFIX=~/.local make install         # per user
+cargo install --path .               # ~/.cargo/bin
 ```
 
-`PREFIX=~/.local make install` if you don't want it system-wide, or
-`cargo install --path .` to put it in `~/.cargo/bin`.
+### Low-memory build
 
-## Packages
+```
+make static                          # then: sudo make install-static
+```
 
-The packaging files (`debian/`, `fetch.spec`, `nix/`, `flake.nix`) build this Rust port with Cargo,
-but they have not been test-built yet. The distro packages published for the C project still ship the C version. Otherwise build from source as above.
+A statically linked binary uses about half the memory (around 1.5 MB with
+`--minimal`, 3 MB for a normal dynamic build) and is about 1.7 MB on disk. It
+needs the static glibc libraries (`glibc-static` on Fedora, `libc6-dev` on
+Debian/Ubuntu), which is why it is not the default.
+
+### Packaging
+
+`debian/`, `fetch.spec`, `nix/` and `flake.nix` build this port with Cargo. They
+have not been test-built yet, and offline distro builders will need the `libc`
+crate vendored or packaged. The distro packages published for the C project
+still ship the C version.
 
 ## Minimal mode
 
@@ -46,237 +77,182 @@ but they have not been test-built yet. The distro packages published for the C p
 fetch --minimal
 ```
 
-Prints the logo next to the system info once and exits, like fastfetch: no
-animation, no 3D point cloud, no terminal raw mode or signal handlers. Put
-`minimal=yes` in the config to make it the default. It uses the logo's own
-characters (the built-in SingularitySYS logo is printed in its flat `@%#` form),
-your config fields, `label_color`, `logo_outer`, `box` and `show_title`.
-
-For the smallest memory footprint, build the statically linked binary:
-
-```
-make static          # or: sudo make install-static
-```
-
-That halves the resident memory (about 1.5 MB for `--minimal`, versus about
-3 MB for a normal build) at the cost of a larger file (about 1.7 MB). It needs
-the static glibc libraries (`glibc-static` on Fedora, `libc6-dev` on Debian).
+One static print of the logo beside the system info, then exit. It uses your
+config (fields, `label_color`, `logo_outer`, `box`, `show_title`), keeps a
+fastfetch logo's own colors, and clips to the terminal width (info moves below
+the logo on very narrow terminals). The built-in SingularitySYS logo prints in
+its flat `@%#` form here; its density letters only exist to shape the 3D relief.
 
 ## Logos
 
-Custom logos: [docs/custom-logos.md](docs/custom-logos.md)
-
-By default it auto-detects your distro and grabs the logo from fastfetch
-(if installed) with its original per-character colors preserved. Works with
-any of fastfetch's 500+ distro logos!
-
-You can also specify one directly:
+By default fetch detects your distro and takes the logo from fastfetch if it is
+installed, keeping the logo's per-character colors (500+ logos). Choose one
+yourself with `-l`:
 
 ```
-./fetch -l arch
-./fetch -l NixOS
-./fetch -l asahi
+fetch -l arch
+fetch -l NixOS
+fetch -l singularity
 ```
 
-Or drop a custom logo in `~/.config/fetch/logo.txt`:
+Priority, highest first: `--logo <name>`, `~/.config/fetch/logo.txt`, a logo
+built into fetch for your distro, fastfetch, then the built-in Gentoo logo.
 
-```
-# distro: gentoo
-         -/oyddmdhs+:.
-     -odNMMMMMMMMNNmhy+-`
-...
-```
+| Built in | Used when |
+|----------|-----------|
+| SingularitySYS (ringed black hole) | distro ID is `singularity`, or `-l singularity` |
+| Gentoo | nothing else matches |
 
-Some logos are built into the binary and need no fastfetch:
-
-| Logo | Used when |
-|------|-----------|
-| SingularitySYS (a ringed black hole) | the distro ID is `singularity`, or `-l singularity` |
-| Gentoo | fallback when nothing else matches |
-
-A `~/.config/fetch/logo.txt` always wins over a built-in logo.
+Your own art goes in `~/.config/fetch/logo.txt`; see
+[docs/custom-logos.md](docs/custom-logos.md).
 
 ## System info
 
-All system info is gathered natively. No fastfetch or neofetch needed:
+Everything below is read directly, with no external info tools:
 
-- **OS** - `/etc/os-release`
-- **Host** - `/proc/device-tree/model` or `/sys/class/dmi/id/product_name`
-- **Kernel** - `uname()`
-- **Uptime** - `/proc/uptime`
-- **Packages** - emerge, pacman, dpkg, rpm, xbps, apk, flatpak, brew, nixpkgs
-- **Shell** - parent process detection (not just `$SHELL`)
-- **Display** - per-connector DRM enumeration (multi-monitor): active resolution and refresh rate from the CRTC mode, monitor name and physical size from EDID, built-in vs external
-- **WM** - process scanning + DE-to-WM mapping
-- **Display Manager** - process scanning
-- **Theme/Icons/Font** - `~/.config/gtk-3.0/settings.ini`, `~/.gtkrc-2.0`, and Qt (`qt6ct`/`qt5ct`, `~/.config/kdeglobals`) on Linux, `defaults read` (macOS)
-- **Cursor** - `~/.config/gtk-3.0/settings.ini` (Linux only)
-- **CPU** - `/proc/cpuinfo`, device-tree (Apple Silicon), or `sysctl` (macOS)
-- **GPU** - DRM + `lspci` for full names (Linux), `system_profiler` (macOS)
-- **Memory/Swap** - `/proc/meminfo` (Linux), `vm_stat` (macOS)
-- **Disk** - `statvfs()` + `/proc/mounts` (Linux), `getmntinfo` (macOS) – supports multiple mount points via config
-- **Battery** - `energy_now/energy_full` plus `model_name` (Linux), IOKit (macOS)
-- **Power Profile** - `/sys/firmware/acpi/platform_profile`, fallback `powerprofilesctl get 2>/dev/null` (Linux)
-- **Local IP** - `getifaddrs()`
+- **OS**: `/etc/os-release`
+- **Host**: `/proc/device-tree/model` or `/sys/class/dmi/id/product_name`
+- **Kernel**: `uname`
+- **Uptime**: `/proc/uptime`
+- **Packages**: emerge, pacman, dpkg, rpm, xbps, apk, flatpak, brew, Nix
+- **Shell**: the parent process, not just `$SHELL`
+- **Display**: per-connector DRM (multi-monitor): active mode and refresh rate from the CRTC, monitor name and physical size from EDID, built-in or external
+- **WM / Display manager**: process scan, plus a desktop-to-WM map
+- **Theme, icons, font, cursor**: GTK 2/3 and Qt (`qt5ct`/`qt6ct`, `kdeglobals`); `defaults` on macOS
+- **CPU**: `/proc/cpuinfo`, device tree (Apple Silicon), or `sysctl` (macOS)
+- **GPU**: DRM plus `lspci` for full names; `system_profiler` on macOS
+- **Memory, swap**: `/proc/meminfo`; `vm_stat`/`sysctl` on macOS
+- **Disk**: `statvfs` and `/proc/mounts`, with extra mount points from the config
+- **Battery**: `/sys/class/power_supply`; IOKit on macOS
+- **Power profile**: ACPI platform profile, or `powerprofilesctl`
+- **Local IP**: `getifaddrs`, default-route interface first
 
-Stats like memory, battery, and uptime update in real-time while the logo spins.
+Uptime, memory, swap and battery refresh about once a second while it spins.
 
-## Config
+## Configuration
 
-Full reference: [docs/configuration.md](docs/configuration.md)
-
-Create `~/.config/fetch/config` to customize:
+Create `~/.config/fetch/config`. Once it exists, only the fields it lists are
+shown, in that order. Full reference: [docs/configuration.md](docs/configuration.md).
 
 ```
-# fields – list to show, in this order
-# remove or comment out to hide
+# Comments must be on their own line.
+
+# fields: list the ones to show, in order
 os
 host
 kernel
 uptime
 packages
 shell
-display
 wm
-displaymanager
-theme
-icons
-font
-cursor
 terminal
+# a separator: blank line between groups
+---
 cpu
 gpu
 memory
-swap
 disk
 ip
-battery
-powerprofile
-locale
-colors
 
-# separators (blank line between groups)
-# ---
-
-# custom static fields
-# custom_Pronouns=he/him
-# custom_Website=example.com
-
-# extra disks (add more mount points)
-# disk=/home
-# disk=/data
+# static text fields
+custom_Website=example.com
+# extra mount points
+disk=/home
 
 # appearance
-# label_color=magenta   (red, green, yellow, blue, magenta, cyan, white)
-# separator=─           (character for the title separator)
-# shading_mode=ascii    (ascii, or opt into blocks / sextants)
-# shading=.,-~:;=!*#$@  (characters for 3D shading, supports UTF-8)
-# box=0                 (adds a box around the system-data, 0 = off, 1 = on)
+# label_color: red green yellow blue magenta cyan white, or an ANSI number
+label_color=magenta
+separator=-
+box=0
+minimal=no
+# shading_mode: ascii, blocks or sextants
+shading_mode=ascii
+shading=.,-~:;=!*#$@
 
-# logo colors (override distro defaults)
-# logo_outer=magenta    (extruded side color)
-# logo_inner=white      (front/back face color)
+# logo colors: extruded sides, then front and back faces
+logo_outer=magenta
+logo_inner=white
 
-# 3d
-# light=top-left        (top-left, top-right, top, left, right, front, bottom-left, bottom-right)
-# spin=xy               (x, y, or xy)
-# speed=1.0             (rotation speed)
-# size=1.0              (logo scale, e.g. 2.0 for double size)
-# depth=1.0             (3D extrusion depth, e.g. 3.0 for chunkier look)
-# height=36             (override render height in rows)
-# v_alignment=top       (top, center, bottom)
-# h_alignment=left      (left, center, right)
+# 3D
+# light: top-left top-right top left right front bottom-left bottom-right
+light=top-left
+spin=xy
+speed=1.0
+size=1.0
+depth=1.0
+height=36
+v_alignment=top
+h_alignment=left
 ```
 
 ## Options
 
+CLI flags override the config file.
+
 | Flag | Description |
 |------|-------------|
-| `-l`, `--logo <name>` | Use a logo from fastfetch by name |
-| `--rotate-x` | Lock rotation to X axis only |
-| `--rotate-y` | Lock rotation to Y axis only |
+| `-l`, `--logo <name>` | Use a built-in or fastfetch logo by name |
+| `--minimal` | Print once and exit, no animation |
+| `--rotate-x`, `--rotate-y` | Spin around one axis only |
 | `-s`, `--speed <float>` | Speed multiplier (default 1.0) |
-| `--size <float>` | Scale the logo (e.g. 2.0 for double size) |
-| `--depth <float>` | Scale the 3D depth (default 1.0) |
-| `--height <n>` | Override render height in rows |
-| `--box` | Draw a border box around the info block |
-| `--minimal` | Print the logo and info once, statically (like fastfetch), then exit. Lowest memory use |
-| `--no-info` | Just the logo, no system info |
-| `--no-color` | Disable coloring |
+| `--size <float>` | Logo scale, 0.5 to 5 |
+| `--depth <float>` | 3D depth scale, 0.1 to 10 |
+| `--height <n>` | Render height in rows |
+| `--box` | Draw a box around the info block |
+| `--no-info` | Logo only |
+| `--no-color` | No logo coloring |
 | `--frames <n>` | Stop after n frames |
-| `--shading-mode <mode>` | `ascii` (default), or opt into sub-cell blocks with `sextants` (2x3) or `blocks` (2x2) |
-| `--shading-chars <str>` | Custom shading ramp, supports UTF-8 |
-| `-h`, `--help` | Show help |
-| `-V`, `--version` | Show version |
-
-CLI flags override config file settings.
+| `--shading-mode <mode>` | `ascii`, `blocks` (2x2) or `sextants` (2x3) |
+| `--shading-chars <str>` | Custom shading ramp, UTF-8 allowed |
+| `--cursor <row>,<col>` | Keep a visible cursor at this position after each frame |
+| `-h`, `--help` / `-V`, `--version` | Help / version |
 
 ## Shading modes
 
-Full reference: [docs/shading-modes.md](docs/shading-modes.md)
-
-ASCII is the default. The sub-cell modes are opt-in, and trade the donut.c look
-for a silhouette that lands on a fraction of a cell instead of snapping to the
-character grid.
+ASCII is the default. `blocks` and `sextants` sample coverage finer than a
+character cell, so edges land on a fraction of a cell instead of snapping to the
+grid. Details: [docs/shading-modes.md](docs/shading-modes.md).
 
 | `ascii` (default) | `blocks` | `sextants` |
 |:---:|:---:|:---:|
 | ![ascii](docs/shading-ascii.png) | ![blocks](docs/shading-blocks.png) | ![sextants](docs/shading-sextants.png) |
-| brightness mapped onto `.,-~:;=!*#$@`, one character per cell | coverage sampled 2×2, edges on quadrants | coverage sampled 2×3, edges on block sextants |
+| brightness on `.,-~:;=!*#$@` | 2×2 quadrants | 2×3 block sextants |
 
 `sextants` needs a terminal that draws the Symbols for Legacy Computing block
-(kitty, Ghostty, foot and WezTerm do it themselves, so the font does not matter);
-`blocks` works anywhere with a UTF-8 locale.
-
-Same logo, same frame, same terminal palette in all three.
-
-## Contributing
-
-PRs are welcome! If you want to add a feature, fix a bug, or package fetch for
-your distro, go for it. I try to keep the codebase small and easy to understand,
-so smaller PRs are easier to merge than big ones.
-
-If you want to chat about ideas before writing code, reach out on
-[Reddit](https://www.reddit.com/user/areofyl) or open an issue.
+(kitty, Ghostty, foot and WezTerm do); `blocks` works anywhere with UTF-8.
 
 ## How it works
 
-For a deep dive with visuals and code, see the [full blog post](https://asdesai.com/blog/how-fetch-works/).
+The algorithm is upstream's; the original author's walkthrough is in
+[their blog post](https://asdesai.com/blog/how-fetch-works/). In this code base:
 
-1. **Logo loading** – reads ASCII/Unicode art from `~/.config/fetch/logo.txt` or
-   grabs a distro logo via fastfetch. ANSI color codes are parsed and preserved
-   per-character.
+1. **Logo** (`src/logo.rs`): art from `logo.txt`, the binary, or fastfetch, split
+   into characters with ANSI colors kept per cell.
+2. **Heightmap and points** (`src/render.rs`): each character's density becomes
+   a height. Interior cells get several Z layers, edge cells only front and back,
+   and flat logos get their depth auto-boosted. Face normals come from the
+   height gradient.
+3. **Projection**: every frame the points are rotated, perspective-projected and
+   z-buffered onto the terminal grid.
+4. **Shading**: Blinn-Phong brightness maps onto the ramp, or the finer
+   `blocks`/`sextants` glyphs. Logos without colors are two-toned by surface.
+5. **Output** (`src/term.rs`, `src/info.rs`): each frame goes out in a single
+   write to avoid flicker, beside the system info from `src/gather/`.
 
-2. **Heightmap** – each character gets a weight based on visual density (`@` is
-   heavy, `.` is light, `█` is full, `░` is thin). The weight becomes a Z height,
-   turning the flat logo into a 3D relief map. Logos with low height variance
-   (uniform characters) get their depth auto-scaled so they don't look flat.
+Source layout and contribution notes: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-3. **Point cloud** – the heightmap is sampled into 3D points. Interior cells get
-   multiple Z layers for a solid extrusion, edge cells get only front and back
-   faces to keep outlines clean.
+## Status and limits
 
-4. **Surface normals** – computed from the height gradient at each cell using
-   finite differences, giving each point a direction for lighting.
+- **Tested on Linux only.** The macOS code paths (sysctl, IOKit battery,
+  `system_profiler`) are written but have never been compiled or run.
+- **Paste hand-back** needs the kernel's `TIOCSTI`, which some systems disable
+  (`dev.tty.legacy_tiocsti=0`); without it the text is lost as before. Very large
+  pastes (over about 4 KB) arriving while fetch exits can come back out of order.
+- The Debian, RPM and Nix packaging has not been test-built.
 
-5. **Rotation + projection** – every frame, all points are rotated around X/Y
-   axes, then perspective-projected onto the terminal grid with a z-buffer to
-   handle occlusion.
+## Credits and license
 
-6. **Shading** – Blinn-Phong lighting (diffuse + specular) gives every visible
-   point a brightness, which maps onto the `.,-~:;=!*#$@` ramp, one character
-   per cell. `--shading-mode sextants` or `blocks` instead samples coverage
-   finer than the character cell – 2×3 or 2×2 – and each cell picks whichever
-   glyph carries the right amount of ink: a shade block (`░▒▓█`) where the cell
-   is filled, a partial block where the silhouette cuts through it. So an edge
-   lands on a fraction of a cell instead of snapping to the character grid.
-
-   Logos that ship their own colors keep them. The rest are two-toned by
-   surface: front and back faces in `logo_inner`, extruded sides in
-   `logo_outer`.
-
-7. **Rendering** – the entire frame is written in a single `write()` syscall to
-   avoid flicker. System info is displayed alongside the animation and
-   fast-changing fields (uptime, memory, swap) update live every second.
-
-Single file C, no dependencies beyond libm.
+fetch was created by [areofyl](https://github.com/areofyl), building on
+[gentoo.c](https://github.com/areofyl/gentoo.c). This port keeps their design,
+config format and ISC license: see [LICENSE](LICENSE). Issues and pull requests
+for the Rust port are welcome here.
