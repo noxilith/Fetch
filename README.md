@@ -26,6 +26,7 @@ byte, across options, config files, logos and terminal sizes. What changed:
 | **Language** | Rust instead of one C file. Safe code throughout apart from a few clearly marked `libc` calls (terminal, DRM, `getifaddrs`). |
 | **`--minimal`** | Prints the logo and info once and exits, like fastfetch: no animation, nothing left running. Also available as `minimal=yes` in the config. |
 | **Static build** | `make static` links glibc in and roughly halves resident memory (about 1.5 MB in `--minimal`). |
+| **Matugen theming** | Colors accept `#rrggbb`, and `~/.config/fetch/colors` is read automatically, so a [matugen](docs/matugen.md) template can make fetch follow your wallpaper. Per-distro colors stay the default. |
 | **Built-in SingularitySYS logo** | Used automatically when `/etc/os-release` says `ID=singularity` (or with `-l singularity`), with no fastfetch required. |
 | **Ends on the logo** | When you press a key, the logo snaps to the face-on view instead of freezing at a random angle, and a blank row is left under it for your prompt. |
 | **Pastes aren't lost** | Text pasted while it spins used to be eaten by the keypress that stops it. It is handed back to your shell now (Linux, see [limits](#status-and-limits)). |
@@ -106,6 +107,18 @@ built into fetch for your distro, fastfetch, then the built-in Gentoo logo.
 Your own art goes in `~/.config/fetch/logo.txt`; see
 [docs/custom-logos.md](docs/custom-logos.md).
 
+## Colors and matugen
+
+Out of the box the logo and the labels use the distro's colors. Override them in
+the config with a name, an ANSI number or a hex color (`label_color=#ffb784`,
+`logo_outer=#7c6cff`), or set `auto` to go back to the distro's.
+
+To have fetch follow your wallpaper, use the included
+[matugen](https://github.com/InioX/matugen) template: it writes
+`~/.config/fetch/colors` from the current palette, and fetch picks it up with no
+other setup. Step-by-step tutorial: [docs/matugen.md](docs/matugen.md); the
+template and config block are in [`matugen/`](matugen/).
+
 ## System info
 
 Everything below is read directly, with no external info tools:
@@ -160,8 +173,9 @@ custom_Website=example.com
 disk=/home
 
 # appearance
-# label_color: red green yellow blue magenta cyan white, or an ANSI number
-label_color=magenta
+# label_color: a name (red green yellow blue magenta cyan white), #rrggbb, an
+# ANSI number, or auto (follow the logo, which follows the distro)
+label_color=auto
 separator=-
 box=0
 minimal=no
@@ -169,9 +183,9 @@ minimal=no
 shading_mode=ascii
 shading=.,-~:;=!*#$@
 
-# logo colors: extruded sides, then front and back faces
-logo_outer=magenta
-logo_inner=white
+# logo colors, same values as label_color: extruded sides, then front/back faces
+logo_outer=auto
+logo_inner=auto
 
 # 3D
 # light: top-left top-right top left right front bottom-left bottom-right

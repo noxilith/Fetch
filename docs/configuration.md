@@ -1,6 +1,31 @@
 # Configuration
 
-fetch is configured through `~/.config/fetch/config`. If the file doesn't exist, all fields are shown in the default order.
+fetch is configured through `~/.config/fetch/config`. If the file doesn't exist, the built-in defaults apply:
+
+```
+os
+host
+kernel
+uptime
+packages
+shell
+wm
+terminal
+---
+cpu
+gpu
+memory
+swap
+disk
+ip
+---
+size=0.75
+spin=y
+```
+
+Labels and the logo are colored per distro (the labels follow the logo's color). Once a config file exists, only the fields it lists are shown; every other setting keeps the default above unless the file sets it.
+
+Colors can also come from `~/.config/fetch/colors`, a file that only sets `label_color`, `logo_outer` and `logo_inner` and is read before the config (so the config wins). Tools like matugen write it: see [matugen.md](matugen.md).
 
 ## Fields
 
@@ -72,7 +97,7 @@ Also accepts `yes`/`no`/`true`/`false`.
 label_color=magenta
 ```
 
-Color of the labels (the "CPU:", "Memory:", etc. text). Accepts: `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, or an ANSI color number.
+Color of the labels (the "CPU:", "Memory:", etc. text). Default `auto`: the labels use the logo's outer color, which follows the distro. Accepts: `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, a hex color like `#ffb784` (needs a true-color terminal), an ANSI color number like `216`, raw escape parameters like `38;5;216`, or `auto`.
 
 ```
 separator=-
@@ -113,7 +138,7 @@ logo_outer=magenta
 logo_inner=white
 ```
 
-`logo_outer` is the extruded side color, `logo_inner` is the front/back face color. Accepts the same color names as `label_color`, or an ANSI number.
+`logo_outer` is the extruded side color, `logo_inner` is the front/back face color. Both default to `auto`: the distro's color scheme. They accept the same values as `label_color`, including `#rrggbb`. Accepts the same color names as `label_color`, or an ANSI number.
 
 ## 3D settings
 
@@ -127,7 +152,7 @@ Light direction. Options: `top-left` (default), `top-right`, `top`, `left`, `rig
 spin=xy
 ```
 
-Which axes to rotate around. `x`, `y`, or `xy` (default).
+Which axes to rotate around. `x`, `y` (default), or `xy`.
 
 ```
 speed=1.0
@@ -139,7 +164,7 @@ Rotation speed multiplier. Higher = faster.
 size=1.0
 ```
 
-Logo scale. `2.0` for double size, `0.5` for half. Range: 0.5 to 5.0.
+Logo scale. `2.0` for double size, `0.5` for half. Range: 0.5 to 5.0. Default `0.75`.
 
 ```
 depth=1.0

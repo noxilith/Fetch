@@ -131,7 +131,8 @@ pub struct Config {
     pub enabled: [bool; Field::COUNT],
     pub order: Vec<Item>,
     pub custom: Vec<(String, String)>,
-    /// SGR code used for labels, e.g. "35".
+    /// SGR parameters for labels, e.g. "35" or "38;2;255;183;132". Empty = follow
+    /// the logo's outer color (which follows the distro).
     pub label_color: String,
     /// 0 = auto
     pub height: i64,
@@ -146,7 +147,7 @@ pub struct Config {
     pub separator: String,
     pub depth: f32,
     pub depth_user_set: bool,
-    /// Full SGR escape (e.g. "\x1b[1;35m"), empty if unset.
+    /// Full SGR escape (e.g. "\x1b[1;35m"), empty = the distro's colors.
     pub logo_outer: String,
     pub logo_inner: String,
     pub extra_disks: Vec<String>,
@@ -158,23 +159,40 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         use Field::*;
-        let defaults = [
-            Os, Host, Kernel, Uptime, Packages, Shell, Display, Wm, Theme, Icons, Font, Cursor,
-            Terminal, Cpu, Gpu, Memory, Swap, Disk, Ip, Battery, Locale, Colors,
+        // The default look: these fields, grouped by blank lines.
+        let order = [
+            Item::Field(Os),
+            Item::Field(Host),
+            Item::Field(Kernel),
+            Item::Field(Uptime),
+            Item::Field(Packages),
+            Item::Field(Shell),
+            Item::Field(Wm),
+            Item::Field(Terminal),
+            Item::Separator,
+            Item::Field(Cpu),
+            Item::Field(Gpu),
+            Item::Field(Memory),
+            Item::Field(Swap),
+            Item::Field(Disk),
+            Item::Field(Ip),
+            Item::Separator,
         ];
         let mut enabled = [false; Field::COUNT];
-        for f in defaults {
-            enabled[f.index()] = true;
+        for item in order {
+            if let Item::Field(f) = item {
+                enabled[f.index()] = true;
+            }
         }
         Config {
             enabled,
-            order: defaults.iter().map(|&f| Item::Field(f)).collect(),
+            order: order.to_vec(),
             custom: Vec::new(),
-            label_color: "35".into(),
+            label_color: String::new(),
             height: 0,
-            size: 1.0,
+            size: 0.75,
             speed: None,
-            spin: None,
+            spin: Some((false, true)),
             boxed: false,
             minimal: false,
             show_title: true,
@@ -206,10 +224,30 @@ fn color_code(name: &str) -> Option<&'static str> {
     })
 }
 
-/// "magenta" -> "\x1b[1;35m"; anything else is used as a raw SGR parameter.
-fn logo_color_escape(val: &str) -> String {
-    let code = color_code(val).unwrap_or_else(|| truncate_bytes(val, 31));
-    format!("\x1b[1;{code}m")
+/// SGR parameters for a color value: a name ("magenta"), "#rrggbb" (24-bit),
+/// or raw parameters ("38;5;216"). `Some("")` for "auto" (follow the distro);
+/// `None` for a malformed "#..." value, which is ignored.
+fn color_params(val: &str) -> Option<String> {
+    if val == "auto" {
+        return Some(String::new());
+    }
+    if let Some(code) = color_code(val) {
+        return Some(code.to_string());
+    }
+    if let Some(hex) = val.strip_prefix('#') {
+        if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        let n = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0);
+        return Some(format!("38;2;{};{};{}", n(0), n(2), n(4)));
+    }
+    Some(truncate_bytes(val, 31).to_string())
+}
+
+/// "magenta" -> "\x1b[1;35m"; "auto" -> "" (use the distro's colors).
+fn logo_color_escape(val: &str) -> Option<String> {
+    let p = color_params(val)?;
+    Some(if p.is_empty() { p } else { format!("\x1b[1;{p}m") })
 }
 
 fn truthy(val: &str) -> bool {
@@ -220,14 +258,34 @@ fn truthy(val: &str) -> bool {
 }
 
 impl Config {
-    /// Load `~/.config/fetch/config` if it exists.
+    /// Load `~/.config/fetch/colors` (written by tools like matugen), then
+    /// `~/.config/fetch/config`, which wins where both set a color.
     pub fn load(&mut self) {
         let Some(home) = std::env::var_os("HOME") else {
             return;
         };
-        let path = std::path::Path::new(&home).join(".config/fetch/config");
-        if let Ok(data) = fs::read(path) {
+        let dir = std::path::Path::new(&home).join(".config/fetch");
+        if let Ok(data) = fs::read(dir.join("colors")) {
+            self.parse_colors(&String::from_utf8_lossy(&data));
+        }
+        if let Ok(data) = fs::read(dir.join("config")) {
             self.parse(&String::from_utf8_lossy(&data));
+        }
+    }
+
+    /// Apply a colors file: only `label_color`, `logo_outer` and `logo_inner`
+    /// are read, and it never touches which fields are shown.
+    pub fn parse_colors(&mut self, text: &str) {
+        for raw in text.lines() {
+            let line = raw
+                .trim_end_matches([' ', '\r', '\n'])
+                .trim_start_matches([' ', '\t']);
+            if ["label_color=", "logo_outer=", "logo_inner="]
+                .iter()
+                .any(|k| line.starts_with(k))
+            {
+                self.parse_line(line);
+            }
         }
     }
 
@@ -254,8 +312,9 @@ impl Config {
 
     fn parse_line(&mut self, line: &str) {
         if let Some(v) = line.strip_prefix("label_color=") {
-            let v = strip_inline_hint(v);
-            self.label_color = color_code(v).unwrap_or_else(|| truncate_bytes(v, 15)).into();
+            if let Some(p) = color_params(strip_inline_hint(v)) {
+                self.label_color = p;
+            }
         } else if let Some(v) = line.strip_prefix("height=") {
             if let Some(n) = parse_integer("height", strip_inline_hint(v), 1, MAX_HEIGHT) {
                 self.height = n;
@@ -292,9 +351,13 @@ impl Config {
                 self.depth_user_set = true;
             }
         } else if let Some(v) = line.strip_prefix("logo_outer=") {
-            self.logo_outer = logo_color_escape(strip_inline_hint(v));
+            if let Some(e) = logo_color_escape(strip_inline_hint(v)) {
+                self.logo_outer = e;
+            }
         } else if let Some(v) = line.strip_prefix("logo_inner=") {
-            self.logo_inner = logo_color_escape(strip_inline_hint(v));
+            if let Some(e) = logo_color_escape(strip_inline_hint(v)) {
+                self.logo_inner = e;
+            }
         } else if let Some(v) = line.strip_prefix("light=") {
             let dir = match strip_inline_hint(v) {
                 "top-left" => Some([0.41, 0.82, -0.41]),
@@ -359,6 +422,45 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn defaults_are_the_house_style() {
+        let c = Config::default();
+        assert_eq!(c.label_color, ""); // follows the distro
+        assert_eq!((c.size, c.spin), (0.75, Some((false, true))));
+        assert_eq!((c.logo_outer.as_str(), c.logo_inner.as_str()), ("", ""));
+        assert_eq!(c.order.len(), 16);
+        assert_eq!(c.order[8], Item::Separator);
+        assert_eq!(c.order[15], Item::Separator);
+        assert!(c.enabled[Field::Terminal.index()] && !c.enabled[Field::Colors.index()]);
+    }
+
+    #[test]
+    fn color_values() {
+        assert_eq!(color_params("#ffb784").as_deref(), Some("38;2;255;183;132"));
+        assert_eq!(color_params("#FFB784"), color_params("#ffb784"));
+        assert_eq!(color_params("red").as_deref(), Some("31"));
+        assert_eq!(color_params("38;5;216").as_deref(), Some("38;5;216"));
+        assert_eq!(color_params("auto").as_deref(), Some(""));
+        for bad in ["#fff", "#gggggg", "#ffb78", "#ffb7845"] {
+            assert_eq!(color_params(bad), None, "{bad}");
+        }
+        assert_eq!(logo_color_escape("#102030").as_deref(), Some("\x1b[1;38;2;16;32;48m"));
+        assert_eq!(logo_color_escape("auto").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn colors_file_only_sets_colors_and_config_wins() {
+        let mut c = Config::default();
+        c.parse_colors("os\ncustom_X=1\nsize=3\nlabel_color=#ffb784\nlogo_outer=#102030\n");
+        assert_eq!(c.label_color, "38;2;255;183;132");
+        assert_eq!(c.logo_outer, "\x1b[1;38;2;16;32;48m");
+        assert_eq!(c.size, 0.75); // not a color key: ignored
+        assert_eq!(c.order.len(), 16); // fields untouched
+        c.parse("label_color=red\nlogo_outer=auto\nos\n");
+        assert_eq!(c.label_color, "31");
+        assert_eq!(c.logo_outer, "");
+    }
 
     #[test]
     fn config_replaces_default_fields() {

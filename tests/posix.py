@@ -130,6 +130,30 @@ class FetchTests(unittest.TestCase):
             self.assertTrue(result.stdout.strip())
             self.assertTrue(set(result.stdout.decode()) <= set(" @%#\n"))
 
+    def test_colors_follow_distro_unless_set(self):
+        with tempfile.TemporaryDirectory(prefix="fetch-test-") as directory:
+            home = Path(directory)
+            config_dir = home / ".config" / "fetch"
+            config_dir.mkdir(parents=True)
+            (config_dir / "logo.txt").write_text("# distro: arch\n  XX  \nXXXXXX\n")
+            config = config_dir / "config"
+            colors = config_dir / "colors"
+            config.write_text("custom_Test=visible\n")
+            # per-distro by default: arch is cyan, and the labels follow the logo
+            out = self.run_fetch(["--minimal"], home).stdout
+            self.assertIn(b"\x1b[1;36mXXXXXX", out)
+            self.assertIn(b"\x1b[1;36mTest", out)
+            # a colors file (e.g. from matugen) takes over, #rrggbb works
+            colors.write_text("label_color=#ffb784\nlogo_outer=#102030\nsize=3\n")
+            out = self.run_fetch(["--minimal"], home).stdout
+            self.assertIn(b"\x1b[1;38;2;255;183;132mTest", out)
+            self.assertIn(b"\x1b[1;38;2;16;32;48mXXXXXX", out)
+            # the config file still wins, and "auto" restores the distro color
+            config.write_text("custom_Test=visible\nlabel_color=red\nlogo_outer=auto\n")
+            out = self.run_fetch(["--minimal"], home).stdout
+            self.assertIn(b"\x1b[1;31mTest", out)
+            self.assertIn(b"\x1b[1;36mXXXXXX", out)
+
     def test_builtin_singularity_logo(self):
         with tempfile.TemporaryDirectory(prefix="fetch-test-") as directory:
             home = Path(directory)

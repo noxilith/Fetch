@@ -280,12 +280,25 @@ fn logo_colors(distro: &str, cfg: &Config) -> (String, String) {
     (outer, inner)
 }
 
+/// Labels follow the logo's outer color (so the distro's scheme) unless
+/// `label_color` is set.
+fn resolve_label_color(cfg: &mut Config, outer: &str) {
+    if cfg.label_color.is_empty() {
+        cfg.label_color = outer
+            .strip_prefix("\x1b[1;")
+            .and_then(|s| s.strip_suffix('m'))
+            .unwrap_or("35")
+            .to_string();
+    }
+}
+
 /// `--minimal`: one static print of the logo beside the info. Skips everything
 /// the animation needs (point cloud, render buffers, terminal modes, signals).
-fn run_minimal(cli: &Cli, cfg: &Config, term_cols: i32) -> ExitCode {
+fn run_minimal(cli: &Cli, cfg: &mut Config, term_cols: i32) -> ExitCode {
     let mut logo = Logo::default();
     let distro = load_logo(&mut logo, cli.logo_name.as_deref());
     let (color, _) = logo_colors(&distro, cfg);
+    resolve_label_color(cfg, &color);
 
     let has_ansi = logo.raw.iter().any(|r| r.as_bytes().contains(&util::ESC));
     let rows: Vec<String> = if logo.builtin && !has_ansi {
@@ -376,7 +389,7 @@ fn main() -> ExitCode {
     let (mut term_rows, mut term_cols) = term::size();
 
     if cli.minimal || cfg.minimal {
-        return run_minimal(&cli, &cfg, term_cols);
+        return run_minimal(&cli, &mut cfg, term_cols);
     }
 
     // Shading: CLI flags, then config, then the ascii default
@@ -407,6 +420,7 @@ fn main() -> ExitCode {
     logo.process();
 
     let (color_outer, color_inner) = logo_colors(&distro, &cfg);
+    resolve_label_color(&mut cfg, &color_outer);
 
     let mut info = if show_info {
         gather_info(&cfg)

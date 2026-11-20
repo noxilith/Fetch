@@ -1,0 +1,4 @@
+# Add this block to ~/.config/matugen/config.toml (keep your other templates).
+[templates.fetch]
+input_path = '~/.config/matugen/templates/fetch-colors'
+output_path = '~/.config/fetch/colors'
